@@ -6,55 +6,22 @@
     <title>안전대피 - 서울/경기 대피소 검색</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
     <style>
-        /* Basic CSS Reset */
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body, html { width: 100%; height: 100%; font-family: 'Malgun Gothic', sans-serif; overflow: hidden; }
         .main-container { display: flex; width: 100%; height: 100vh; }
-
-        /* Sidebar Styling */
-        #sidebar {
-            width: 380px; height: 100%; padding: 20px;
-            background: #ffffff; box-shadow: 2px 0 10px rgba(0,0,0,0.1);
-            z-index: 10; display: flex; flex-direction: column;
-        }
-
+        #sidebar { width: 380px; height: 100%; padding: 20px; background: #ffffff; box-shadow: 2px 0 10px rgba(0,0,0,0.1); z-index: 10; display: flex; flex-direction: column; }
         .header-title { color: #ff4d4d; margin-bottom: 10px; font-size: 22px; }
-
-        /* Warning Message */
-        .warning-box {
-            background: #fff3f3; color: #d32f2f; padding: 12px;
-            border-radius: 6px; font-size: 13px; margin-bottom: 15px;
-            border: 1px solid #ffcdd2; line-height: 1.6;
-        }
-
-        /* Search Bar */
+        .warning-box { background: #fff3f3; color: #d32f2f; padding: 12px; border-radius: 6px; font-size: 13px; margin-bottom: 15px; border: 1px solid #ffcdd2; line-height: 1.6; }
         .search-box { display: flex; gap: 5px; margin-bottom: 15px; }
-        #keyword { 
-            flex: 1; padding: 12px; border: 2px solid #ff4d4d; 
-            border-radius: 4px; outline: none; font-size: 14px;
-        }
-        #search-btn { 
-            padding: 10px 18px; background: #ff4d4d; color: white; 
-            border: none; border-radius: 4px; cursor: pointer; font-weight: bold;
-        }
-
-        /* Loading & Status Message */
-        .status-msg { font-size: 12px; color: #777; margin-bottom: 10px; text-align: center; }
-
-        /* Result List */
+        #keyword { flex: 1; padding: 12px; border: 2px solid #ff4d4d; border-radius: 4px; outline: none; }
+        #search-btn { padding: 10px 18px; background: #ff4d4d; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        .status-msg { font-size: 12px; color: #777; margin-bottom: 10px; text-align: center; font-weight: bold; }
         #result-list { list-style: none; overflow-y: auto; flex: 1; }
-        #result-list li { 
-            padding: 15px; border-bottom: 1px solid #eee; 
-            cursor: pointer; transition: background 0.2s; 
-        }
+        #result-list li { padding: 15px; border-bottom: 1px solid #eee; cursor: pointer; }
         #result-list li:hover { background: #fff5f5; }
         #result-list li h5 { color: #333; margin-bottom: 6px; font-size: 15px; }
-        #result-list li p { font-size: 13px; color: #666; line-height: 1.4; }
         .info-row { display: flex; justify-content: space-between; margin-top: 8px; font-size: 12px; }
         .distance-val { color: #ff4d4d; font-weight: bold; }
-        .capacity-val { color: #555; background: #f0f0f0; padding: 2px 6px; border-radius: 4px; }
-
-        /* Map Area */
         #map { flex: 1; height: 100%; }
     </style>
 </head>
@@ -63,20 +30,16 @@
     <div class="main-container">
         <div id="sidebar">
             <h2 class="header-title">📢 안전대피소 찾기</h2>
-            
-            <div id="loading-status" class="status-msg">데이터를 불러오는 중...</div>
-
+            <div id="loading-status" class="status-msg">데이터 파일을 불러오는 중...</div>
             <div class="warning-box">
-                ⚠️ 본 서비스는 <b>서울특별시</b>와 <b>경기도</b> 지역의 민방위 대피소 정보만 제공합니다. 타 지역은 검색되지 않습니다.
+                ⚠️ 본 서비스는 <b>서울특별시</b>와 <b>경기도</b> 지역 내의 대피소 정보만 제공합니다.
             </div>
-
             <div class="search-box">
                 <input type="text" id="keyword" placeholder="동네나 건물명 입력 (예: 성내동, 수원역)" onkeypress="if(event.keyCode==13) searchLocation()">
                 <button id="search-btn" onclick="searchLocation()">검색</button>
             </div>
-
             <ul id="result-list">
-                <p style="text-align:center; color:#999; margin-top:30px;">검색어를 입력해 주세요.</p>
+                <p style="text-align:center; color:#999; margin-top:30px;">데이터 로딩 완료 후 검색해 주세요.</p>
             </ul>
         </div>
         <div id="map"></div>
@@ -86,97 +49,93 @@
 
     <script>
         let map;
-        let ps; // Places Service
-        let shelterData = []; // Combined CSV data
-        let markers = []; // Map markers
-        let userLocation = null; // Current GPS location
+        let ps; 
+        let shelterData = []; 
+        let markers = []; 
+        let userLocation = null;
 
-        // Marker image setting (Red Star)
         const markerImageSrc = "https://t1.daumcdn.net/localimg/localimages/07/mapapidoc/markerStar.png"; 
-        const markerImageSize = new kakao.maps.Size(24, 35); 
-        const redMarkerImage = new kakao.maps.MarkerImage(markerImageSrc, markerImageSize);
+        const redMarkerImage = new kakao.maps.MarkerImage(markerImageSrc, new kakao.maps.Size(24, 35));
 
         window.onload = function() {
             initMap();
             loadCsvData();
         };
 
-        // Initialize Map
         function initMap() {
             const container = document.getElementById('map');
-            const options = {
-                center: new kakao.maps.LatLng(37.5668, 126.9786), // Seoul City Hall
-                level: 4
-            };
-            map = new kakao.maps.Map(container, options);
+            map = new kakao.maps.Map(container, { center: new kakao.maps.LatLng(37.5668, 126.9786), level: 4 });
             ps = new kakao.maps.services.Places();
 
-            // Get Current Location
             if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition(position => {
-                    userLocation = new kakao.maps.LatLng(position.coords.latitude, position.coords.longitude);
+                navigator.geolocation.getCurrentPosition(pos => {
+                    userLocation = new kakao.maps.LatLng(pos.coords.latitude, pos.coords.longitude);
                     map.setCenter(userLocation);
-                    // Blue marker for user
                     new kakao.maps.Marker({ map: map, position: userLocation });
                 });
             }
         }
 
-        // Load CSV Files (Encoding EUC-KR for Public Data)
+        // 1. CSV 데이터 로드 (에러 방지 강화)
         function loadCsvData() {
-            // File paths should be relative for GitHub Pages
-            const files = ['./seoul.csv', './gg.csv'];
-            let loadedFiles = 0;
+            // GitHub 저장소의 파일 이름과 정확히 일치해야 함 (대소문자/언더바 확인!)
+            const files = ['seoul.csv', 'gg.csv'];
+            let loadedCount = 0;
 
             files.forEach(file => {
                 Papa.parse(file, {
                     download: true,
                     header: true,
-                    encoding: "EUC-KR", // Crucial for Korean characters
+                    encoding: "EUC-KR", 
                     skipEmptyLines: true,
                     complete: function(results) {
-                        shelterData = shelterData.concat(results.data);
-                        loadedFiles++;
-                        console.log(file + " Loaded: " + results.data.length);
+                        // 컬럼명 공백 제거 처리
+                        const cleanedData = results.data.map(row => {
+                            let newRow = {};
+                            for(let key in row) { newRow[key.trim()] = row[key]; }
+                            return newRow;
+                        });
                         
-                        if (loadedFiles === files.length) {
-                            document.getElementById('loading-status').innerText = `✅ 대피소 ${shelterData.length}곳 로드 완료`;
+                        shelterData = shelterData.concat(cleanedData);
+                        loadedCount++;
+                        console.log(`${file} 로드 성공: ${cleanedData.length}건`);
+                        
+                        if (loadedCount === files.length) {
+                            document.getElementById('loading-status').innerText = `✅ 대피소 ${shelterData.length}곳 준비 완료`;
+                            document.getElementById('loading-status').style.color = "blue";
                         }
                     },
                     error: function(err) {
-                        console.error("Error loading CSV:", err);
-                        document.getElementById('loading-status').innerText = "❌ 데이터 로드 오류 발생";
+                        console.error(`${file} 로드 실패:`, err);
+                        document.getElementById('loading-status').innerText = `❌ ${file} 로드 오류!`;
+                        document.getElementById('loading-status').style.color = "red";
                     }
                 });
             });
         }
 
-        // Search Location using Kakao Keyword Search
         function searchLocation() {
             const keyword = document.getElementById('keyword').value.trim();
-            if (!keyword) return alert("검색어를 입력해 주세요!");
-            if (shelterData.length === 0) return alert("데이터가 아직 로드 중입니다.");
+            if (!keyword) return alert("검색어를 입력하세요.");
+            if (shelterData.length === 0) return alert("데이터가 아직 로드되지 않았습니다.");
 
             ps.keywordSearch(keyword, (data, status) => {
                 if (status === kakao.maps.services.Status.OK) {
-                    // Use the first result as search center
                     const searchPoint = new kakao.maps.LatLng(data[0].y, data[0].x);
                     findNearbyShelters(searchPoint);
                 } else {
-                    alert("지역을 찾을 수 없습니다. 서울/경기 내 지명을 입력해 주세요.");
+                    alert("검색 결과가 없습니다. 서울/경기 지역인지 확인해 주세요.");
                 }
             });
         }
 
-        // Filter and Display Nearby Shelters
         function findNearbyShelters(centerPoint) {
-            clearOldData(); // Reset Markers and List
+            clearOldData();
             map.setCenter(centerPoint);
 
-            // Radius: 2km
-            const searchLimit = 2000; 
+            // 검색 반경을 5km(5000m)로 확대하여 데이터가 안 나오는 현상 방지
+            const searchLimit = 5000; 
 
-            // Filter & Sort by distance
             const filtered = shelterData
                 .filter(item => {
                     const lat = parseFloat(item['위도(EPSG4326)']);
@@ -185,83 +144,60 @@
                     
                     const itemPos = new kakao.maps.LatLng(lat, lng);
                     const dist = calculateDistance(centerPoint, itemPos);
-                    item.dist = dist; // Store distance for sorting
+                    item.dist = dist; 
                     return dist <= searchLimit;
                 })
                 .sort((a, b) => a.dist - b.dist)
-                .slice(0, 30); // Show top 30 results
+                .slice(0, 30); 
 
             if (filtered.length === 0) {
-                document.getElementById('result-list').innerHTML = '<p style="text-align:center; padding:20px;">주변 2km 이내에 대피소가 없습니다.</p>';
+                document.getElementById('result-list').innerHTML = '<p style="text-align:center; padding:20px;">주변 5km 이내에 대피소가 없습니다.</p>';
                 return;
             }
 
             displayResults(filtered);
         }
 
-        // Display Results on List and Map
         function displayResults(places) {
             const listEl = document.getElementById('result-list');
             const bounds = new kakao.maps.LatLngBounds();
 
             places.forEach(place => {
-                const lat = parseFloat(place['위도(EPSG4326)']);
-                const lng = parseFloat(place['경도(EPSG4326)']);
-                const position = new kakao.maps.LatLng(lat, lng);
-
-                // Add Marker
-                const marker = new kakao.maps.Marker({
-                    position: position,
-                    image: redMarkerImage, // Red star image
-                    map: map
-                });
+                const pos = new kakao.maps.LatLng(parseFloat(place['위도(EPSG4326)']), parseFloat(place['경도(EPSG4326)']));
+                
+                const marker = new kakao.maps.Marker({ position: pos, image: redMarkerImage, map: map });
                 markers.push(marker);
-                bounds.extend(position);
+                bounds.extend(pos);
 
-                // Marker Click -> Route Finding
-                kakao.maps.event.addListener(marker, 'click', () => {
-                    openDirections(place);
-                });
+                kakao.maps.event.addListener(marker, 'click', () => openDirections(place));
 
-                // Add to Sidebar List
                 const li = document.createElement('li');
-                const distKm = (place.dist / 1000).toFixed(1);
+                const distText = (place.dist / 1000).toFixed(1);
                 li.innerHTML = `
                     <h5>${place['시설명']}</h5>
                     <p>${place['도로명전체주소'] || place['소재지전체주소']}</p>
                     <div class="info-row">
-                        <span class="distance-val">📍 중심에서 ${distKm}km</span>
-                        <span class="capacity-val">수용: ${place['최대수용인원'] || '0'}명</span>
+                        <span class="distance-val">📍 ${distText}km</span>
+                        <span style="font-size:11px; color:#888;">수용: ${place['최대수용인원'] || '0'}명</span>
                     </div>
                 `;
-                li.onclick = () => {
-                    map.panTo(position);
-                    openDirections(place);
-                };
+                li.onclick = () => { map.panTo(pos); openDirections(place); };
                 listEl.appendChild(li);
             });
-
             map.setBounds(bounds);
         }
 
-        // External Link for Directions
         function openDirections(place) {
-            const name = place['시설명'];
-            const lat = place['위도(EPSG4326)'];
-            const lng = place['경도(EPSG4326)'];
-            if(confirm(`'${name}' 대피소로 길찾기를 시작할까요?`)) {
-                const url = `https://map.kakao.com/link/to/${name},${lat},${lng}`;
-                window.open(url, '_blank');
+            if(confirm(`'${place['시설명']}' 대피소로 길찾기를 시작할까요?`)) {
+                window.open(`https://map.kakao.com/link/to/${place['시설명']},${place['위도(EPSG4326)']},${place['경도(EPSG4326)']}`, '_blank');
             }
         }
 
-        // Utility: Calculate distance between two LatLngs
         function calculateDistance(p1, p2) {
             const poly = new kakao.maps.Polyline({ path: [p1, p2] });
             return poly.getLength();
         }
 
-        // Utility: Clear existing markers and list items
         function clearOldData() {
             markers.forEach(m => m.setMap(null));
             markers = [];
