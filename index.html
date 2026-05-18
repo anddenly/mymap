@@ -6,42 +6,26 @@
     <title>안전대피 - 서울/경기 대피소 검색</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
     <style>
-        /* CSS: 레이아웃 설정 */
+        /* 기존 CSS 유지 */
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body, html { width: 100%; height: 100%; font-family: 'Malgun Gothic', sans-serif; }
         .main-container { display: flex; width: 100%; height: 100vh; }
-
-        /* 사이드바 스타일 */
-        #sidebar {
-            width: 380px; height: 100%; padding: 20px;
-            background: #ffffff; box-shadow: 2px 0 10px rgba(0,0,0,0.1);
-            z-index: 10; display: flex; flex-direction: column;
-        }
-
-        /* 경고 문구 스타일 */
-        .warning-text {
-            background: #fff3f3; color: #d32f2f; padding: 10px;
-            border-radius: 5px; font-size: 13px; margin-bottom: 15px;
-            border: 1px solid #ffcdd2; line-height: 1.5;
-        }
-
+        #sidebar { width: 380px; height: 100%; padding: 20px; background: #ffffff; box-shadow: 2px 0 10px rgba(0,0,0,0.1); z-index: 10; display: flex; flex-direction: column; }
+        .warning-text { background: #fff3f3; color: #d32f2f; padding: 10px; border-radius: 5px; font-size: 13px; margin-bottom: 15px; border: 1px solid #ffcdd2; line-height: 1.5; }
         .search-box { display: flex; gap: 5px; margin-bottom: 20px; }
         #keyword { flex: 1; padding: 12px; border: 2px solid #ff4d4d; border-radius: 4px; outline: none; }
         #search-btn { padding: 10px 15px; background: #ff4d4d; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
-
-        /* 검색 결과 리스트 */
         #result-list { list-style: none; overflow-y: auto; flex: 1; }
-        #result-list li { 
-            padding: 15px; border-bottom: 1px solid #eee; cursor: pointer; transition: 0.2s; 
-        }
+        #result-list li { padding: 15px; border-bottom: 1px solid #eee; cursor: pointer; transition: 0.2s; }
         #result-list li:hover { background: #fff5f5; }
         #result-list li h5 { color: #333; margin-bottom: 5px; font-size: 15px; }
         #result-list li p { font-size: 13px; color: #666; }
         .info-badge { display: inline-block; margin-top: 5px; font-size: 12px; color: #ff4d4d; font-weight: bold; }
         .capacity-badge { background: #f0f0f0; color: #333; padding: 2px 6px; border-radius: 4px; font-size: 11px; margin-left: 5px; }
-
-        /* 지도 영역 */
         #map { flex: 1; height: 100%; }
+        
+        /* 로딩 상태 스타일 추가 */
+        .loading-msg { text-align: center; color: #ff4d4d; font-weight: bold; padding: 10px; background: #fff5f5; border-radius: 4px; margin-bottom: 10px; }
     </style>
 </head>
 <body>
@@ -49,6 +33,7 @@
     <div class="main-container">
         <div id="sidebar">
             <h2 style="margin-bottom:10px; color:#ff4d4d;">📢 안전대피소 찾기</h2>
+            <div id="status-msg" class="loading-msg">데이터 로딩 중... 잠시만 기다려주세요.</div>
             
             <div class="warning-text">
                 ⚠️ 본 서비스는 <b>서울특별시</b>와 <b>경기도</b> 지역의 민방위 대피소 정보만 제공합니다.
@@ -59,7 +44,7 @@
                 <button id="search-btn" onclick="searchShelters()">검색</button>
             </div>
             <ul id="result-list">
-                <p style="text-align:center; color:#999; margin-top:20px;">검색어를 입력해 주세요.</p>
+                <p style="text-align:center; color:#999; margin-top:20px;">데이터 로딩 완료 후 검색이 가능합니다.</p>
             </ul>
         </div>
         <div id="map"></div>
@@ -70,58 +55,70 @@
     <script>
         let map;
         let markers = [];
-        let shelterData = []; // CSV 데이터를 저장할 배열
+        let shelterData = []; 
         let userLocation = null;
         let polyline = null;
+        let filesLoaded = 0; // 로드된 파일 개수 체크
 
         window.onload = function() {
             initMap();
-            loadCsvData(); // 시작할 때 CSV 데이터 불러오기
+            loadCsvData(); 
         };
 
-        // 지도 초기화
         function initMap() {
             const mapContainer = document.getElementById('map');
-            const mapOptions = {
-                center: new kakao.maps.LatLng(37.5668, 126.9786),
-                level: 5
-            };
+            const mapOptions = { center: new kakao.maps.LatLng(37.5668, 126.9786), level: 5 };
             map = new kakao.maps.Map(mapContainer, mapOptions);
 
-            // 현재 위치 가져오기
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(function(pos) {
                     userLocation = new kakao.maps.LatLng(pos.coords.latitude, pos.coords.longitude);
                     map.setCenter(userLocation);
-                    
-                    // 내 위치 표시 (파란색 기본 마커)
                     new kakao.maps.Marker({ map: map, position: userLocation });
                 });
             }
         }
 
-        // 1. CSV 데이터 불러오기 및 통합
-        async function loadCsvData() {
+        // 1. CSV 데이터 불러오기 (개선됨)
+        function loadCsvData() {
             const files = ['민방위대피시설_서울특별시.csv', '민방위대피시설_경기도.csv'];
+            const statusMsg = document.getElementById('status-msg');
             
-            for (const file of files) {
+            files.forEach(file => {
                 Papa.parse(file, {
                     download: true,
                     header: true,
+                    skipEmptyLines: true, // 빈 줄 무시
                     complete: function(results) {
                         shelterData = shelterData.concat(results.data);
-                        console.log(file + " 로드 완료");
+                        filesLoaded++;
+                        console.log(`${file} 로드 완료 (${results.data.length}개)`);
+                        
+                        // 모든 파일이 로드되었을 때
+                        if (filesLoaded === files.length) {
+                            statusMsg.innerText = `✅ 준비 완료! (총 ${shelterData.length}개 대피소)`;
+                            statusMsg.style.color = "green";
+                            statusMsg.style.background = "#e8f5e9";
+                            setTimeout(() => statusMsg.style.display = 'none', 3000); // 3초 뒤 메시지 숨김
+                        }
                     },
                     error: function(err) {
-                        console.error(file + "를 찾을 수 없습니다. 파일 이름을 확인해주세요.");
+                        console.error(`${file} 로드 실패:`, err);
+                        statusMsg.innerText = `❌ ${file}을 찾을 수 없습니다!`;
                     }
                 });
-            }
+            });
         }
 
-        // 2. 대피소 검색 함수
         function searchShelters() {
             const keyword = document.getElementById('keyword').value.trim();
+            
+            // 데이터가 아직 안 불려왔을 때 방어 코드
+            if (shelterData.length === 0) {
+                alert("데이터를 불러오는 중입니다. 잠시만 기다려주세요!");
+                return;
+            }
+
             if (!keyword) {
                 alert("검색어를 입력하세요!");
                 return;
@@ -129,7 +126,7 @@
 
             clearOldData();
 
-            // 주소나 시설명에 키워드가 포함된 데이터 필터링
+            // 필터링 logic (대소문자 구분 없애기 위해 toLowerCase 사용 가능하나 한국어라 그대로 유지)
             const filtered = shelterData.filter(item => 
                 (item['소재지전체주소'] && item['소재지전체주소'].includes(keyword)) || 
                 (item['도로명전체주소'] && item['도로명전체주소'].includes(keyword)) ||
@@ -137,78 +134,60 @@
             );
 
             if (filtered.length === 0) {
-                alert("검색 결과가 없습니다. 서울/경기 지역인지 확인해 주세요.");
+                alert(`'${keyword}'에 대한 검색 결과가 없습니다.\n서울/경기 지역인지, 혹은 동네 이름이 정확한지 확인해 주세요.`);
                 return;
             }
 
             displayResults(filtered);
         }
 
-        // 3. 결과 표시 (마커 & 리스트)
         function displayResults(places) {
             const listEl = document.getElementById('result-list');
             const bounds = new kakao.maps.LatLngBounds();
             listEl.innerHTML = '';
 
-            // 빨간색 마커 이미지 설정
             const imageSrc = 'https://t1.daumcdn.net/localimg/localimages/07/mapapidoc/markerStar.png';
             const imageSize = new kakao.maps.Size(24, 35);
             const markerImage = new kakao.maps.MarkerImage(imageSrc, imageSize);
 
-            places.forEach((place, index) => {
-                // CSV 위도/경도 컬럼 확인 (EPSG4326 사용)
+            places.forEach((place) => {
                 const lat = parseFloat(place['위도(EPSG4326)']);
                 const lng = parseFloat(place['경도(EPSG4326)']);
 
                 if (isNaN(lat) || isNaN(lng)) return;
 
                 const position = new kakao.maps.LatLng(lat, lng);
-                
-                // 마커 생성
-                const marker = new kakao.maps.Marker({
-                    position: position,
-                    image: markerImage,
-                    map: map
-                });
+                const marker = new kakao.maps.Marker({ position: position, image: markerImage, map: map });
                 markers.push(marker);
                 bounds.extend(position);
 
-                // 거리 계산 (내 위치가 있을 경우)
                 let distanceText = "";
                 if (userLocation) {
-                    const line = new kakao.maps.Polyline({
-                        path: [userLocation, position]
-                    });
+                    const line = new kakao.maps.Polyline({ path: [userLocation, position] });
                     distanceText = (line.getLength() / 1000).toFixed(1) + "km";
                 }
 
-                // 리스트 추가
                 const li = document.createElement('li');
                 li.innerHTML = `
                     <div>
                         <h5>${place['시설명']}</h5>
                         <p>${place['도로명전체주소'] || place['소재지전체주소']}</p>
                         <span class="info-badge">${distanceText}</span>
-                        <span class="capacity-badge">수용가능: ${place['최대수용인원'] || '정보없음'}명</span>
+                        <span class="capacity-badge">수용가능: ${place['최대수용인원'] || '0'}명</span>
                     </div>
                 `;
 
-                // 클릭 시 길찾기 및 위치 이동
                 li.onclick = () => showRoute(position, place['시설명']);
                 kakao.maps.event.addListener(marker, 'click', () => showRoute(position, place['시설명']));
-
                 listEl.appendChild(li);
             });
 
             map.setBounds(bounds);
         }
 
-        // 4. 길찾기 기능 (직선 표시 + 카카오맵 연결)
         function showRoute(targetPos, targetName) {
             if (polyline) polyline.setMap(null);
-
             if (userLocation) {
-                // 지도에 직선 표시
                 polyline = new kakao.maps.Polyline({
                     path: [userLocation, targetPos],
                     strokeWeight: 5,
@@ -219,15 +198,13 @@
                 polyline.setMap(map);
                 map.panTo(targetPos);
 
-                // 실제 길찾기는 외부 링크 연결 (사용자 편의성)
-                if(confirm(`'${targetName}'까지 길찾기를 시작할까요? (카카오맵으로 연결됩니다)`)) {
+                if(confirm(`'${targetName}'까지 길찾기를 시작할까요?`)) {
                     const url = `https://map.kakao.com/link/to/${targetName},${targetPos.getLat()},${targetPos.getLng()}`;
                     window.open(url, '_blank');
                 }
             }
         }
 
-        // 5. 초기화 함수
         function clearOldData() {
             markers.forEach(m => m.setMap(null));
             markers = [];
